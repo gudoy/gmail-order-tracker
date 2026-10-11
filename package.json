@@ -1,0 +1,13 @@
+{
+  "name": "gmail-order-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gmail add-on (Google Apps Script) that detects orders in your emails and tracks pending deliveries.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test",
+    "login": "npx @google/clasp login",
+    "push": "npx @google/clasp push",
+    "open": "npx @google/clasp open"
+  }
+}

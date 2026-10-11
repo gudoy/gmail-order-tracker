@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --bg: #f0f4f8; --card: #ffffff; --text: #1a202c; --muted: #718096; --line: #e2e8f0;
+      --head: #2d3748; --head-text: #ffffff; --link: #3182ce; --hover: #f7fafc;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12161c; --card: #1c222b; --text: #e2e8f0; --muted: #94a3b8; --line: #2d3748;
+        --head: #0f1318; --head-text: #e2e8f0; --link: #63b3ed; --hover: #232a35;
+        color-scheme: dark;
+      }
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg);
+      color: var(--text); margin: 0; padding: 24px 16px; }
+    main { max-width: 1200px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    .subtitle { font-size: 13px; color: var(--muted); margin: 0 0 20px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .toolbar input[type=search] { flex: 1 1 240px; padding: 8px 12px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--card); color: var(--text); font-size: 14px; }
+    .toolbar label { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    .table-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; background: var(--card); min-width: 860px; }
+    thead { background: var(--head); color: var(--head-text); }
+    th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+    td { padding: 12px 16px; font-size: 14px; vertical-align: top; border-bottom: 1px solid var(--line); }
+    tbody tr:hover { background: var(--hover); }
+    .muted { font-size: 12px; color: var(--muted); display: block; margin-top: 2px; }
+    .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    a { color: var(--link); text-decoration: none; font-weight: 500; }
+    a:hover { text-decoration: underline; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .s-preorder { background: #ede9fe; color: #5b21b6; }
+    .s-ordered, .s-processing { background: #d1fae5; color: #065f46; }
+    .s-shipped { background: #ccfbf1; color: #0f766e; }
+    .s-in_transit { background: #fef3c7; color: #92400e; }
+    .s-out_for_delivery { background: #fce7f3; color: #9d174d; }
+    .s-available_for_pickup { background: #dbeafe; color: #1e40af; }
+    .s-issue { background: #fee2e2; color: #991b1b; }
+    .s-delivered, .s-cancelled, .s-returned, .s-unknown { background: #e2e8f0; color: #4a5568; }
+    .empty, .error { padding: 32px; text-align: center; color: var(--muted); }
+    .error { color: #c53030; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>📦 Commandes en attente de réception</h1>
+    <p class="subtitle" id="subtitle">Chargement…</p>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Filtrer : marchand, produit, n° de commande ou de suivi…" aria-label="Filtrer les commandes">
+      <label><input type="checkbox" id="showClosed"> Afficher livrées / annulées</label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Marchand / n° de commande</th>
+            <th>Produit</th>
+            <th>Commandée le</th>
+            <th>Prix</th>
+            <th>Statut</th>
+            <th>Livraison prévue</th>
+            <th>Suivi</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const CLOSED = ['delivered', 'cancelled', 'returned'];
+    let data = null;
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text) node.textContent = text;
+      return node;
+    }
+
+    function safeUrl(url) {
+      return /^https?:\/\//i.test(url || '') ? url : '';
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso);
+      return isNaN(d) ? iso : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    function formatPrice(o) {
+      if (!o.price) return '';
+      const n = Number(o.price);
+      if (isNaN(n)) return o.price + ' ' + (o.currency || '');
+      try {
+        return n.toLocaleString('fr-FR', { style: 'currency', currency: o.currency || 'EUR' });
+      } catch (e) {
+        return n.toFixed(2) + ' ' + (o.currency || '');
+      }
+    }
+
+    function row(o) {
+      const tr = document.createElement('tr');
+
+      const merchant = el('td');
+      merchant.append(el('strong', '', o.merchant || '—'));
+      if (o.orderNumber) merchant.append(el('span', 'muted mono', o.orderNumber));
+      tr.append(merchant);
+
+      tr.append(el('td', '', o.items || '—'));
+      tr.append(el('td', '', formatDate(o.orderDate) || '—'));
+      tr.append(el('td', '', formatPrice(o) || '—'));
+
+      const status = el('td');
+      status.append(el('span', 'badge s-' + (o.status || 'unknown'), data.labels[o.status] || 'Inconnu'));
+      tr.append(status);
+
+      tr.append(el('td', '', formatDate(o.eta) || '—'));
+
+      const tracking = el('td');
+      const url = safeUrl(o.trackingUrl);
+      const label = [o.carrier, o.trackingNumber].filter(Boolean).join(' · ') || (url ? 'Suivre' : '—');
+      if (url) {
+        const a = el('a', '', label);
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        tracking.append(a);
+      } else {
+        tracking.append(document.createTextNode(label));
+      }
+      if (o.lastEvent) {
+        const when = o.lastEventAt ? formatDate(o.lastEventAt) + ' — ' : '';
+        tracking.append(el('span', 'muted', when + o.lastEvent));
+      }
+      tr.append(tracking);
+      return tr;
+    }
+
+    function render() {
+      const query = document.getElementById('search').value.trim().toLowerCase();
+      const showClosed = document.getElementById('showClosed').checked;
+      const visible = data.orders.filter(function (o) {
+        if (!showClosed && CLOSED.indexOf(o.status) >= 0) return false;
+        if (!query) return true;
+        return [o.merchant, o.items, o.orderNumber, o.trackingNumber, o.carrier]
+          .join(' ').toLowerCase().indexOf(query) >= 0;
+      });
+
+      const body = document.getElementById('rows');
+      body.replaceChildren();
+      if (!visible.length) {
+        const td = el('td', 'empty', 'Aucune commande à afficher.');
+        td.colSpan = 7;
+        const tr = document.createElement('tr');
+        tr.append(td);
+        body.append(tr);
+      }
+      visible.forEach(function (o) { body.append(row(o)); });
+
+      const open = data.orders.filter(function (o) { return CLOSED.indexOf(o.status) < 0; }).length;
+      document.getElementById('subtitle').textContent =
+        'Mis à jour le ' + new Date(data.generatedAt).toLocaleString('fr-FR') +
+        ' · ' + open + ' commande(s) en cours · Triées par date de livraison prévue';
+    }
+
+    function fail(error) {
+      document.getElementById('subtitle').textContent = '';
+      const body = document.getElementById('rows');
+      const td = el('td', 'error', 'Erreur de chargement : ' + (error && error.message ? error.message : error));
+      td.colSpan = 7;
+      const tr = document.createElement('tr');
+      tr.append(td);
+      body.replaceChildren(tr);
+    }
+
+    document.getElementById('search').addEventListener('input', function () { if (data) render(); });
+    document.getElementById('showClosed').addEventListener('change', function () { if (data) render(); });
+
+    google.script.run
+      .withSuccessHandler(function (result) { data = result; render(); })
+      .withFailureHandler(fail)
+      .getDashboardData();
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# clasp: personal script id and OAuth tokens
+.clasp.json
+.clasprc.json
+
+# secrets
+.env
+.env.*
+
+node_modules/
+.DS_Store
